@@ -1,0 +1,223 @@
+---
+title: "DATA 607 Final Project"
+author: "Gabriel Santos"
+date: '2022-12-01'
+output: html_document
+---
+
+### *Introduction*
+
+Should Travelers Avoid Flying Airlines That Have Had Crashes in the Past?
+
+The data set contains crash data from many airlines. After a crash people move to other airlines for safety. Does that mean than other airlines are more safe than the airlines that crashed? 
+I checked with the data if there is a pattern in the plane crashes or it is just a fear of flying.
+
+The goal of the project is to discover if there is a pattern after the crash or if is it just a fear.
+
+
+### *Data*
+
+
+Over the last century, the world has seen several airplanes crashes both in the sky and on the ground. The development of technology aims to decrease technological difficulties and human errors. However, fatalities and aircraft damage caused by crashes do not cease to exist.
+I used a List of airlines by name, seats, fatalities, and incidents. 
+
+
+**Parameters**
+
+- airline: Airline 
+- avail_seat_km_per_week: Available seat kilometers flown every week
+- incidents_85_99: Total number of incidents, 1985–1999
+- fatal_accidents_85_99: Total number of fatal accidents, 1985–1999
+- fatalities_85_99: Total number of fatalities, 1985–1999
+- incidents_00_14: Total number of incidents, 2000–2014
+- fatal_accidents_00_14: Total number of fatal accidents, 2000–2014
+- fatalities_00_14: Total number of fatalities, 2000–2014
+
+```{r, echo=FALSE}
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+library(janitor)
+library(kableExtra)
+library(stringr)
+library(ggplot2)
+library(data.table)
+library(formattable)
+```
+
+**SQL Database**
+
+Data can be normalised in relation data structure. Following is the structure of the relation data. The main detail table tblAirlinesIncident contains details of the incident and is related to master tables tblAirlines, tblIncidentTypeMst and tblYearRange using foreign key.
+
+View SQL Queries: https://github.com/GabrielSantos33/MSDA-607-Final-Project/blob/main/DATA607_FinalProject.sql
+
+
+**SQL Data**
+
+MongoDB
+Data can be stored in scalable document sets in MongoDB. Every row is stored in json format as document. This approach can make this data scalable. Here we are inserting document for each row. For every row MongoDB creates an identifier _id. Airlines incident data is stored with all the fields and corresponding value.
+
+**SQL MongoDB**
+
+CSV data
+Data can be extracted from CSV to data frame using R packages. This data can be cleaned and transformed. In the code below we are loading data directly from the source. The data is inspected and cleaned.
+```{r}
+das <- read.csv(file="https://raw.githubusercontent.com/fivethirtyeight/data/master/airline-safety/airline-safety.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
+
+head(das) %>% kable() %>% kable_styling()
+```
+**Scrub Data - Extraction/ Transformation**
+
+```{r}
+das$airline <- stringr::str_replace(das$airline, '\\*', '')
+
+airlineMst <- unique(das$airline)
+head(airlineMst) %>% kable(col.names = "Airline") %>% kable_styling()
+```
+
+```{r}
+incidentMst <- c("incident", "accident", "fatalities")
+
+head(incidentMst) %>% kable(col.names = "Type") %>% kable_styling()
+
+```
+
+```{r}
+yearRangeMst <- c("yr_85_99", "yr_00_14")
+
+head(yearRangeMst) %>% kable(col.names = "Year") %>% kable_styling()
+```
+
+```{r}
+str(das)
+```
+**Gather data and extract subset**
+
+```{r}
+names(das) <- c("airline", "avail_seat_km_per_week", "incidents_85_99", "fatal_accidents_85_99", "fatalities_85_99", "incidents_00_14", "fatal_accidents_00_14", "fatalities_00_14")
+
+
+dasTransform01 <- gather(das, "incident", "count", incidents_85_99)
+dasTransform02 <- gather(das, "incident", "count", fatal_accidents_85_99)
+dasTransform03 <- gather(das, "incident", "count", fatalities_85_99)
+dasTransform04 <- gather(das, "incident", "count", incidents_00_14)
+dasTransform05 <- gather(das, "incident", "count", fatal_accidents_00_14)
+dasTransform06 <- gather(das, "incident", "count", fatalities_00_14)
+
+
+dasTransform01 <- subset(dasTransform01, select = c(airline,avail_seat_km_per_week,incident,count) )
+dasTransform02 <- subset(dasTransform02, select = c(airline,avail_seat_km_per_week,incident,count) )
+dasTransform03 <- subset(dasTransform03, select = c(airline,avail_seat_km_per_week,incident,count) )
+dasTransform04 <- subset(dasTransform04, select = c(airline,avail_seat_km_per_week,incident,count) )
+dasTransform05 <- subset(dasTransform05, select = c(airline,avail_seat_km_per_week,incident,count) )
+dasTransform06 <- subset(dasTransform06, select = c(airline,avail_seat_km_per_week,incident,count) )
+
+names(dasTransform01)
+```
+
+```{r}
+
+dasTransformCombined <- rbind(dasTransform01, dasTransform02, dasTransform03, dasTransform04, dasTransform05, dasTransform06)
+
+al_seats_mean = mean(dasTransformCombined$avail_seat_km_per_week)
+al_seats_mean
+```
+
+```{r}
+dasTransformCombined <- dasTransformCombined %>% 
+  mutate(incident_type = ifelse(incident == "incidents_85_99", "incident", ifelse(incident == "fatal_accidents_85_99", "fatal_accident", ifelse(incident == "fatalities_85_99", "fatalities", ifelse(incident == "incidents_00_14", "incident", ifelse(incident == "fatal_accidents_00_14", "fatal_accident", ifelse(incident == "fatalities_00_14", "fatalities", ""))))))) %>% 
+  mutate(incident_year = ifelse(incident == "incidents_85_99", "1999", ifelse(incident == "fatal_accidents_85_99", "1999", ifelse(incident == "fatalities_85_99", "1999", ifelse(incident == "incidents_00_14", "2014", ifelse(incident == "fatal_accidents_00_14", "2014", ifelse(incident == "fatalities_00_14", "2014", ""))))))) %>% 
+  mutate(incident_ratio = ifelse(count == 0, round(avail_seat_km_per_week/1000000, 0), round((avail_seat_km_per_week/1000000)/count, 0) ))
+
+head(dasTransformCombined) %>% kable() %>% kable_styling()
+```
+
+```{r}
+al_mean = mean(dasTransformCombined$count)
+al_mean
+```
+
+```{r}
+al_sd = sd(dasTransformCombined$count)
+al_sd
+```
+
+```{r}
+dim(dasTransform01)
+```
+
+```{r}
+dim(dasTransformCombined)
+```
+### *Explore Data*
+
+```{r}
+ggplot(data=dasTransformCombined, aes(x=count, y=incident_type)) + geom_point(aes(count, incident_type), color = "blue") + ylab("Type Incident") + xlab("Count") + ggtitle("Type of air incident vs Count") +
+  theme(plot.title = element_text(hjust = 0))
+```
+
+```{r}
+ggplot(data=dasTransformCombined, aes(x=count, y=incident_year)) + geom_point(aes(count, incident_year), color = "blue") + ylab("Year Incident") + xlab("Count") + ggtitle("Year of incident vs Count") +
+  theme(plot.title = element_text(hjust = 0))
+```
+
+```{r}
+ggplot(data=dasTransformCombined, aes(x=count, y=incident_ratio)) + geom_line(aes(size=incident_ratio), color = "blue") + ylab("Incident Ratio") + xlab("Count") + ggtitle("Incident Ratio vs Count") +
+  theme(plot.title = element_text(hjust = 0))
+```
+### *Model Data*
+
+**Find the distribution**
+
+```{r}
+
+ggplot(data = dasTransformCombined, aes(dasTransformCombined$count)) +
+  stat_function(fun = dnorm, n = 101, args = list(mean=al_mean, sd=al_sd), color = 'blue') + ylab("") + xlab("Count") +
+  scale_y_continuous(breaks = NULL) + ggtitle("Distribution") +
+  theme(plot.title = element_text(hjust = 0))
+```
+
+```{r}
+dasTransformModel <- dasTransformCombined
+
+dasTransformModel <- data.frame(subset(dasTransformCombined, select = c(airline,incident_type,count)))
+head(das)
+```
+
+### *Results*
+
+Passengers consider airlines unsafe after having a plane crash. Passengers avoid using the airline that had the accident.I reviewed the data to see if it is true that an airline that had an incident was an unsafe airline. I analyzed the data, performed the transformation and classified it by categories according to the type of incident (incident, fatalities and fatal accident). I explored the data using the OSEMN workflow.(obtain, scrub, explore, model, and interpret.)
+
+After analyzing the data, I found no evidence that there was a relationship between unsafe airlines and air incidents. I did a heat map and I could see that there is no continuous pattern between airlines and air incidents per year.
+
+In the distribution graph made above, I did not find a normal distribution that suggests that there is a relationship between airlines and air incidents.
+
+
+
+```{r}
+ggplot(dasTransformCombined, aes(incident_year, airline)) + geom_tile(aes(fill = count), colour = "white") + scale_fill_gradient(low = "white", high = "darkblue") + theme(text = element_text(size=7), axis.text.x = element_text(angle=90, hjust=1)) + ylab("Airlines") + xlab("Incident Year") + ggtitle("Incidence per Year", subtitle = "Heat map") + theme(plot.title = element_text(hjust = 0))
+```
+I made the following table relating each airline with the number of air incidents for each year and the relationship with the size of each airline. Analyzing the data there is no correlation between air incidents and the airline.
+
+
+
+```{r}
+customGreen0 = "darkgreen"
+customGreen = "lightgreen"
+customRed = "red"
+
+dasTransformTable <- subset(dasTransformCombined, select = c(airline,incident_type,incident_year,count,incident_ratio))
+
+names(dasTransformTable) <- c("Airlines","Type of Incident","Year","Count","Ratio")
+  
+formattable(dasTransformTable, align =c("l","c","c","c","c", "c", "c", "c", "r"), list(
+  `Indicator Name` = formatter("span", style = ~ style(color = "grey",font.weight = "bold")), 
+  `Count`= color_tile(customGreen, customRed),
+  `Ratio`= color_tile(customGreen, customRed)
+))
+```
+
+### *Conclusion*
+
+Analyzing the data there is no correlation between air incidents and the airline. In conclusion, people's fear is unfounded. Since there is no relationship between air incidents with the airlines.
+
